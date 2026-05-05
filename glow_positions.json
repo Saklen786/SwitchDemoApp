@@ -1,0 +1,26 @@
+{
+    "glow_low_left": {
+        "center_x": 0.3370408217347259,
+        "center_y": 0.5586340609168804
+    },
+    "glow_low_right": {
+        "center_x": 0.6576824925042632,
+        "center_y": 0.5586340609168804
+    },
+    "glow_high_left": {
+        "center_x": 0.34253753609077514,
+        "center_y": 0.5555561873030133
+    },
+    "glow_high_right": {
+        "center_x": 0.648521301910848,
+        "center_y": 0.5555561873030133
+    },
+    "glow_ind_left": {
+        "center_x": 0.15748148610378498,
+        "center_y": 0.5170827671296744
+    },
+    "glow_ind_right": {
+        "center_x": 0.8354095900165212,
+        "center_y": 0.518621703936608
+    }
+}
