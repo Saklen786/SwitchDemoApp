@@ -20,16 +20,8 @@ from kivy.properties import StringProperty, ListProperty, BooleanProperty
 from kivy.graphics import RenderContext
 from kivy.core.audio import SoundLoader
 from bleak import BleakScanner, BleakClient
+from kivy.utils import platform
 
-# --- REQUEST ANDROID PERMISSIONS AT STARTUP ---
-if platform == 'android':
-    from android.permissions import request_permissions, Permission
-    request_permissions([
-        Permission.BLUETOOTH_SCAN,
-        Permission.BLUETOOTH_CONNECT,
-        Permission.ACCESS_FINE_LOCATION,
-        Permission.ACCESS_COARSE_LOCATION
-    ])
 # --- ANDROID ROTATION LOCK ---
 # Note: To natively lock the orientation on Android devices so the layout does not rotate, 
 # you MUST configure your buildozer.spec file before compiling the APK:
@@ -38,7 +30,6 @@ if platform == 'android':
 # Set window size for Mobile Portrait testing on PC
 Window.size = (400, 800)
 Window.clearcolor = (0.020, 0.027, 0.039, 1) 
-POSITIONS_FILE = "glow_positions.json"
 
 # --- BLE Configuration ---
 PICO_BLE_NAME = "RE_Switch_Dash"
@@ -217,7 +208,7 @@ KV = '''
                         size_hint_y: 0.18
                         
                         Image:
-                            source: 'voltage_background.png'
+                            source: 'voltage_background.jpg'
                             allow_stretch: True
                             keep_ratio: False
                             pos_hint: {'center_x': 0.5, 'center_y': 0.5}
@@ -372,7 +363,7 @@ KV = '''
                                     text_size: self.size
                                     size_hint_x: 0.7
                                     
-                            # Data Stream Collapse Toggle (Fixed Missing Glyph error)
+                            # Data Stream Collapse Toggle
                             Button:
                                 text: "HIDE" if not root.data_stream_collapsed else "SHOW"
                                 font_name: 'Roboto'
@@ -549,7 +540,7 @@ KV = '''
             height: 65
             
             Image:
-                source: 'ble_background.png'
+                source: 'ble_background.jpg'
                 allow_stretch: True
                 keep_ratio: False
                 pos_hint: {'center_x': 0.5, 'center_y': 0.5}
@@ -620,10 +611,10 @@ KV = '''
 
 class DashboardLayout(FloatLayout):
     btn_text = StringProperty("CONNECT BLE")
-    btn_color = ListProperty([0, 0.941, 1.0, 1]) # 00F0FF Neon Cyan
+    btn_color = ListProperty([0, 0.941, 1.0, 1]) 
     status_img = StringProperty("status_red.png")
     edit_mode = BooleanProperty(False)
-    data_stream_collapsed = BooleanProperty(False) # Collapsible Data Stream Tracker
+    data_stream_collapsed = BooleanProperty(False) 
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -658,6 +649,12 @@ class DashboardLayout(FloatLayout):
         # Initial Log state
         self.log_data("SYSTEM ENGAGED...")
         self.log_data("AWAITING DATA LINK...")
+
+    # --- GET ANDROID SAFE FILE PATH FOR SAVING DATA ---
+    def get_positions_filepath(self):
+        if platform == 'android':
+            return os.path.join(App.get_running_app().user_data_dir, "glow_positions.json")
+        return "glow_positions.json"
 
     # --- DEV MENU / PASSWORD SYSTEM ---
     def trigger_dev_menu(self):
@@ -716,9 +713,10 @@ class DashboardLayout(FloatLayout):
                 self.ids[g_id].opacity = 0.0
 
     def load_positions(self, dt=None):
-        if os.path.exists(POSITIONS_FILE):
+        filepath = self.get_positions_filepath()
+        if os.path.exists(filepath):
             try:
-                with open(POSITIONS_FILE, "r") as f:
+                with open(filepath, "r") as f:
                     data = json.load(f)
                     for g_id, pos in data.items():
                         if g_id in self.ids:
@@ -734,14 +732,14 @@ class DashboardLayout(FloatLayout):
             if widget and widget.pos_hint:
                 data[g_id] = widget.pos_hint
         try:
-            with open(POSITIONS_FILE, "w") as f:
+            filepath = self.get_positions_filepath()
+            with open(filepath, "w") as f:
                 json.dump(data, f, indent=4)
             self.log_data("NEW POSITIONS SAVED [OK]")
         except Exception as e:
             pass
 
     def log_data(self, msg):
-        # Using a > to guarantee native rendering on all mobile fonts while keeping the aesthetic
         formatted = f"[color=#00F0FF][b]>[/b][/color]   [color=#9BA4B5]{msg}[/color]"
         self.log_lines.append(formatted)
         if len(self.log_lines) > 30: 
@@ -787,9 +785,10 @@ class DashboardLayout(FloatLayout):
         horn = state.get("horn", False)
         warn = state.get("warn", False)
 
-        if warn: self.current_volt_color = "FF2D7A"
-        elif horn: self.current_volt_color = "FF2D7A"
-        else: self.current_volt_color = "00F0FF"
+        if warn or horn:
+            self.ids.txt_adc.color = (1, 0.176, 0.478, 1) # Pink/Red Highlight
+        else: 
+            self.ids.txt_adc.color = (0, 0.941, 1.0, 1) # Cyan default
 
         volts = state.get("adc_volts", self.last_volts)
         self.ids.txt_adc.text = f"[color=#{self.current_volt_color}]{volts:.2f}[/color][size=20sp] [color=#7A8599]V[/color][/size]"
@@ -804,7 +803,6 @@ class DashboardLayout(FloatLayout):
 
         self.current_ind_state = ind
 
-        # Handle Horn Sound Playback Trigger
         if horn and not self.is_horn_active:
             self.is_horn_active = True
             if self.sound_horn:
@@ -835,7 +833,6 @@ class DashboardLayout(FloatLayout):
             self.btn_color = [0, 1.0, 0.541, 1] 
             self.status_img = "status_yellow.png"
             
-            # Play Connection Audio Loop
             if self.sound_start:
                 self.sound_start.play()
                 
@@ -945,6 +942,17 @@ class MotoDashApp(App):
     def build(self):
         Builder.load_string(KV)
         return DashboardLayout()
+        
+    def on_start(self):
+        # --- REQUEST ANDROID PERMISSIONS SAFELY AFTER UI LOADS ---
+        if platform == 'android':
+            from android.permissions import request_permissions, Permission
+            request_permissions([
+                Permission.BLUETOOTH_SCAN,
+                Permission.BLUETOOTH_CONNECT,
+                Permission.ACCESS_FINE_LOCATION,
+                Permission.ACCESS_COARSE_LOCATION
+            ])
 
 if __name__ == '__main__':
     MotoDashApp().run()
