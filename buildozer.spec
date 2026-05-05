@@ -7,7 +7,7 @@ title = Switch Demonstrator
 package.name = switchdemo
 
 # (str) Package domain (needed for android/ios packaging)
-package.domain = org.ssay.switch
+package.domain = org.ssay.demo
 
 # (str) Source code where the main.py lives
 source.dir = .
