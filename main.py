@@ -21,6 +21,15 @@ from kivy.graphics import RenderContext
 from kivy.core.audio import SoundLoader
 from bleak import BleakScanner, BleakClient
 
+# --- REQUEST ANDROID PERMISSIONS AT STARTUP ---
+if platform == 'android':
+    from android.permissions import request_permissions, Permission
+    request_permissions([
+        Permission.BLUETOOTH_SCAN,
+        Permission.BLUETOOTH_CONNECT,
+        Permission.ACCESS_FINE_LOCATION,
+        Permission.ACCESS_COARSE_LOCATION
+    ])
 # --- ANDROID ROTATION LOCK ---
 # Note: To natively lock the orientation on Android devices so the layout does not rotate, 
 # you MUST configure your buildozer.spec file before compiling the APK:
