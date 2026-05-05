@@ -3,6 +3,8 @@ import threading
 import time
 import asyncio
 import os
+import traceback
+
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.floatlayout import FloatLayout
@@ -19,16 +21,13 @@ from kivy.core.window import Window
 from kivy.properties import StringProperty, ListProperty, BooleanProperty
 from kivy.graphics import RenderContext
 from kivy.core.audio import SoundLoader
-from bleak import BleakScanner, BleakClient
 from kivy.utils import platform
 
-# --- ANDROID ROTATION LOCK ---
-# Note: To natively lock the orientation on Android devices so the layout does not rotate, 
-# you MUST configure your buildozer.spec file before compiling the APK:
-# Change: orientation = all  --->  To: orientation = portrait (or landscape if specifically needed)
-
-# Set window size for Mobile Portrait testing on PC
-Window.size = (400, 800)
+# --- ANDROID SAFE WINDOW SETUP ---
+# Forcing Window.size on Android causes instant crashes on many devices. 
+# We only force it if we are on a PC.
+if platform != 'android':
+    Window.size = (400, 800)
 Window.clearcolor = (0.020, 0.027, 0.039, 1) 
 
 # --- BLE Configuration ---
@@ -36,13 +35,12 @@ PICO_BLE_NAME = "RE_Switch_Dash"
 UART_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 UART_TX_CHAR_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E" 
 
-# --- Custom Fragment Shader to Force Exact Image Tinting (Fixes Blue Color bug) ---
+# --- Custom Fragment Shader to Force Exact Image Tinting ---
 fs_shader = '''
 $HEADER$
 uniform vec4 tint_color;
 void main(void) {
     vec4 tex_color = texture2D(texture0, tex_coord0);
-    // Ignore the texture's original RGB, apply our exact tint_color RGB, and multiply the Alpha
     gl_FragColor = vec4(tint_color.rgb, tex_color.a * tint_color.a);
 }
 '''
@@ -51,7 +49,6 @@ class TintedImage(Image):
     tint_color = ListProperty([1, 1, 1, 1])
 
     def __init__(self, **kwargs):
-        # Override Kivy's default canvas BEFORE super() so it adopts our shader
         self.canvas = RenderContext(use_parent_projection=True, use_parent_modelview=True)
         self.canvas.shader.fs = fs_shader
         super().__init__(**kwargs)
@@ -109,7 +106,6 @@ KV = '''
     FloatLayout:
         size_hint_y: 0.65
         
-        # Icon layer (Forces opacity to 0 to prevent gray box glitch on the About tab)
         TintedImage:
             source: root.icon_source
             opacity: 0 if root.is_about else 1
@@ -118,7 +114,6 @@ KV = '''
             size_hint: (1.0, 1.0)
             keep_ratio: True
         
-        # Custom Canvas-drawn (i) icon for the 'About' section
         Label:
             text: "i" if root.is_about else ""
             font_name: 'Roboto'
@@ -143,7 +138,7 @@ KV = '''
     BoxLayout:
         orientation: 'vertical'
         size: root.size
-        padding: [15, 15, 15, 0] # Flush bottom for nav bar
+        padding: [15, 15, 15, 0] 
         spacing: 15
 
         # 1. HEADER
@@ -166,7 +161,7 @@ KV = '''
                     text: "[b]E521.39 IC[/b]"
                     markup: True
                     font_size: '20sp'
-                    color: 0, 0.941, 1.0, 1  # 00F0FF Neon Cyan
+                    color: 0, 0.941, 1.0, 1
                     halign: 'left'
                     valign: 'bottom'
                     text_size: self.size
@@ -174,7 +169,7 @@ KV = '''
                     text: "SWITCH DEMONSTRATOR"
                     font_name: 'Roboto'
                     font_size: '9sp'
-                    color: 0.478, 0.522, 0.6, 1  # 7A8599 Grey
+                    color: 0.478, 0.522, 0.6, 1
                     halign: 'left'
                     valign: 'top'
                     text_size: self.size
@@ -217,7 +212,7 @@ KV = '''
                         BoxLayout:
                             orientation: 'vertical'
                             pos_hint: {'x': 0.08, 'center_y': 0.5}
-                            size_hint: (0.6, 0.85) # Increased size to prevent text cropping
+                            size_hint: (0.6, 0.85)
                             
                             Label:
                                 text: "SYSTEM VOLTAGE"
@@ -232,24 +227,24 @@ KV = '''
                                 id: txt_adc
                                 text: "[color=#00F0FF]0.00[/color][size=20sp] [color=#7A8599]V[/color][/size]"
                                 markup: True
-                                font_size: '44sp' # Slightly scaled down from 50sp
+                                font_size: '44sp'
                                 bold: True
                                 size_hint_y: 0.65
                                 halign: 'left'
-                                valign: 'middle' # Center aligns inside bounds to prevent bottom clipping
+                                valign: 'middle'
                                 text_size: self.size
                         
                         TintedImage:
                             source: 'icon_voltage.png'
-                            tint_color: 0, 0.941, 1.0, 1 # Cyan
+                            tint_color: 0, 0.941, 1.0, 1
                             size_hint: (None, None)
                             size: (44, 44)
                             pos_hint: {'right': 0.92, 'center_y': 0.5}
 
-                    # 2b. MOTORCYCLE GRAPHICS (Fully Flexible Remaining Height)
+                    # 2b. MOTORCYCLE GRAPHICS
                     FloatLayout:
                         id: moto_container
-                        size_hint_y: 1.0 # Expands dynamically depending on screen limits and Terminal Collapse state
+                        size_hint_y: 1.0
 
                         Image:
                             id: moto_base
@@ -306,11 +301,11 @@ KV = '''
                                 size_hint: (0.25, 0.25)
                                 opacity: 0
 
-                    # 2c. TERMINAL LOG (Collapsible)
+                    # 2c. TERMINAL LOG
                     BoxLayout:
                         orientation: 'vertical'
                         size_hint_y: None if root.data_stream_collapsed else 0.3
-                        height: 54 if root.data_stream_collapsed else 100 # 100 acts as baseline when responsive
+                        height: 54 if root.data_stream_collapsed else 100
                         padding: [15, 15, 15, 15]
                         spacing: 12
                         canvas.before:
@@ -321,7 +316,6 @@ KV = '''
                                 size: self.size
                                 radius: [8]
                         
-                        # Header Row
                         BoxLayout:
                             orientation: 'horizontal'
                             size_hint_y: None
@@ -337,7 +331,6 @@ KV = '''
                                 valign: 'middle'
                                 text_size: self.size
                             
-                            # LIVE Badge
                             BoxLayout:
                                 size_hint_x: None
                                 width: 65
@@ -363,7 +356,6 @@ KV = '''
                                     text_size: self.size
                                     size_hint_x: 0.7
                                     
-                            # Data Stream Collapse Toggle
                             Button:
                                 text: "HIDE" if not root.data_stream_collapsed else "SHOW"
                                 font_name: 'Roboto'
@@ -376,7 +368,6 @@ KV = '''
                                 color: 0.478, 0.522, 0.6, 1
                                 on_release: root.data_stream_collapsed = not root.data_stream_collapsed
 
-                        # Log Scrolling Area (Hides when Collapsed)
                         ScrollView:
                             id: log_scroll
                             do_scroll_x: False
@@ -410,7 +401,7 @@ KV = '''
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: 20
-                    padding: [20, 30, 20, 30] # Proper horizontal alignment padding
+                    padding: [20, 30, 20, 30] 
                     
                     Label:
                         text: "SYSTEM SETTINGS"
@@ -431,7 +422,7 @@ KV = '''
                         spacing: 15
                         canvas.before:
                             Color:
-                                rgba: 0.086, 0.098, 0.118, 1 # Premium dark card styling
+                                rgba: 0.086, 0.098, 0.118, 1 
                             RoundedRectangle:
                                 pos: self.pos
                                 size: self.size
@@ -478,7 +469,7 @@ KV = '''
                                     size: self.size
                                     radius: [6]
                     
-                    Widget: # Filler
+                    Widget: 
                         size_hint_y: 1
 
             # ----------------------------------------------------
@@ -531,7 +522,7 @@ KV = '''
                             size_hint_y: 0.6
                             text_size: self.size
                     
-                    Widget: # Filler
+                    Widget: 
                         size_hint_y: 1
 
         # 3. BLE CONNECT BUTTON
@@ -631,32 +622,32 @@ class DashboardLayout(FloatLayout):
         self.current_state_int = 6
         self.debounce_event = None
         self.last_logged_state = None
-        
         self.last_volts = 0.0
         self.current_volt_color = "00F0FF"
         
-        # Audio Setup
-        self.sound_start = SoundLoader.load('two_wheeler_start.mp3')
-        self.sound_horn = SoundLoader.load('horn.mp3')
-        self.is_horn_active = False
-        
-        if self.sound_start:
-            self.sound_start.loop = True
+        # Audio Setup wrapped in Try/Except (Missing audio files can crash Android)
+        try:
+            self.sound_start = SoundLoader.load('two_wheeler_start.mp3')
+            self.sound_horn = SoundLoader.load('horn.mp3')
+            self.is_horn_active = False
+            if self.sound_start:
+                self.sound_start.loop = True
+        except Exception as e:
+            self.log_data(f"AUDIO ERR: {e}")
         
         Clock.schedule_interval(self.blink_loop, 0.5)
         Clock.schedule_once(self.load_positions, 0.1)
         
-        # Initial Log state
         self.log_data("SYSTEM ENGAGED...")
         self.log_data("AWAITING DATA LINK...")
 
-    # --- GET ANDROID SAFE FILE PATH FOR SAVING DATA ---
     def get_positions_filepath(self):
         if platform == 'android':
-            return os.path.join(App.get_running_app().user_data_dir, "glow_positions.json")
+            app = App.get_running_app()
+            if app:
+                return os.path.join(app.user_data_dir, "glow_positions.json")
         return "glow_positions.json"
 
-    # --- DEV MENU / PASSWORD SYSTEM ---
     def trigger_dev_menu(self):
         if self.edit_mode:
             self.toggle_edit_mode()
@@ -786,9 +777,9 @@ class DashboardLayout(FloatLayout):
         warn = state.get("warn", False)
 
         if warn or horn:
-            self.ids.txt_adc.color = (1, 0.176, 0.478, 1) # Pink/Red Highlight
+            self.ids.txt_adc.color = (1, 0.176, 0.478, 1) 
         else: 
-            self.ids.txt_adc.color = (0, 0.941, 1.0, 1) # Cyan default
+            self.ids.txt_adc.color = (0, 0.941, 1.0, 1) 
 
         volts = state.get("adc_volts", self.last_volts)
         self.ids.txt_adc.text = f"[color=#{self.current_volt_color}]{volts:.2f}[/color][size=20sp] [color=#7A8599]V[/color][/size]"
@@ -805,11 +796,11 @@ class DashboardLayout(FloatLayout):
 
         if horn and not self.is_horn_active:
             self.is_horn_active = True
-            if self.sound_horn:
+            if getattr(self, 'sound_horn', None):
                 self.sound_horn.play()
         elif not horn and self.is_horn_active:
             self.is_horn_active = False
-            if self.sound_horn:
+            if getattr(self, 'sound_horn', None):
                 self.sound_horn.stop()
 
     def blink_loop(self, dt):
@@ -833,7 +824,7 @@ class DashboardLayout(FloatLayout):
             self.btn_color = [0, 1.0, 0.541, 1] 
             self.status_img = "status_yellow.png"
             
-            if self.sound_start:
+            if getattr(self, 'sound_start', None):
                 self.sound_start.play()
                 
             threading.Thread(target=self.start_ble_engine, daemon=True).start()
@@ -842,12 +833,26 @@ class DashboardLayout(FloatLayout):
                 asyncio.run_coroutine_threadsafe(self.ble_client.disconnect(), self.ble_loop)
 
     def start_ble_engine(self):
+        # --- CRUCIAL ANDROID FIX: Attach the Python background thread to the Java JVM ---
+        # If we do not attach this thread, Bleak's PyJnius calls will instantly crash Android.
+        if platform == 'android':
+            try:
+                from jnius import autoclass
+                autoclass('java.lang.Thread').currentThread().setName('BLE_Scanner_Thread')
+            except Exception as e:
+                self.log_data(f"JNI Error: {e}")
+
         self.ble_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.ble_loop)
         self.ble_loop.run_until_complete(self.run_ble_connection())
 
     async def run_ble_connection(self):
         try:
+            # --- CRUCIAL ANDROID FIX: DEFERRED IMPORT ---
+            # Importing Bleak forces Android to check Bluetooth hardware. If this happens 
+            # at startup before the app fully loads, Android kills the app silently.
+            from bleak import BleakScanner, BleakClient
+
             Clock.schedule_once(lambda dt: self.log_data(f"SEARCHING: '{PICO_BLE_NAME}'"))
             device = await BleakScanner.find_device_by_name(PICO_BLE_NAME, timeout=10.0)
             
@@ -944,15 +949,40 @@ class MotoDashApp(App):
         return DashboardLayout()
         
     def on_start(self):
-        # --- REQUEST ANDROID PERMISSIONS SAFELY AFTER UI LOADS ---
         if platform == 'android':
-            from android.permissions import request_permissions, Permission
-            request_permissions([
-                Permission.BLUETOOTH_SCAN,
-                Permission.BLUETOOTH_CONNECT,
-                Permission.ACCESS_FINE_LOCATION,
-                Permission.ACCESS_COARSE_LOCATION
-            ])
+            try:
+                from android.permissions import request_permissions, Permission
+                request_permissions([
+                    Permission.BLUETOOTH_SCAN,
+                    Permission.BLUETOOTH_CONNECT,
+                    Permission.ACCESS_FINE_LOCATION,
+                    Permission.ACCESS_COARSE_LOCATION
+                ])
+            except Exception as e:
+                print(f"Perm Error: {e}")
+
+# --- THE ULTIMATE SAFETY NET (CRASH SCREEN) ---
+# If anything forces the app to crash on Android, it will catch it and display 
+# a giant red error screen instead of closing, allowing you to debug instantly.
+def start_safe():
+    MotoDashApp().run()
 
 if __name__ == '__main__':
-    MotoDashApp().run()
+    try:
+        start_safe()
+    except Exception as fatal_error:
+        class CrashReporterApp(App):
+            def build(self):
+                from kivy.uix.scrollview import ScrollView
+                sv = ScrollView()
+                l = Label(
+                    text=f"FATAL ERROR:\n\n{traceback.format_exc()}",
+                    color=(1, 0.2, 0.2, 1),
+                    font_size='12sp',
+                    size_hint_y=None
+                )
+                l.bind(width=lambda *x: l.setter('text_size')(l, (l.width, None)),
+                       texture_size=lambda *x: l.setter('height')(l, l.texture_size[1]))
+                sv.add_widget(l)
+                return sv
+        CrashReporterApp().run()
