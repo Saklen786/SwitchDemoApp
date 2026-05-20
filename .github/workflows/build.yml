@@ -32,12 +32,14 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install "cython<3.0.0" buildozer virtualenv
+          python3 -m pip install "cython<3.0.0" buildozer virtualenv
 
       - name: Build APK
         run: |
           export ORG_GRADLE_PROJECT_jvmargs="-Xmx3072m -Dorg.gradle.daemon=false"
-          buildozer android debug
+          python3 -m buildozer android debug
+        env:
+          PYTHON: python3.11
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
