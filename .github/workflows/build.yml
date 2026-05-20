@@ -19,27 +19,29 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ---> THIS IS THE FIX: FORCE GITHUB TO USE STABLE PYTHON 3.11 <---
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      # ---> THIS IS THE FIX: FORCE SYSTEM PYTHON3 TO STABLE 3.10 <---
+      # Ubuntu 22.04 has 3.10 installed by default. We force python3 to point to it,
+      # bypassing GitHub's experimental 3.14 updates that break Cython.
+      - name: Force Python 3.10 (Ubuntu Default)
+        run: |
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+          sudo update-alternatives --set python3 /usr/bin/python3.10
+          python3 --version
 
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+          sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev python3-pip python3-setuptools
 
       - name: Install Python dependencies
         run: |
+          python3 -m pip install --upgrade pip
           python3 -m pip install "cython<3.0.0" buildozer virtualenv
 
       - name: Build APK
         run: |
           export ORG_GRADLE_PROJECT_jvmargs="-Xmx3072m -Dorg.gradle.daemon=false"
-          python3 -m buildozer android debug
-        env:
-          PYTHON: python3.11
+          ~/.local/bin/buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
