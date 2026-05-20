@@ -34,20 +34,24 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install "cython<3.0.0" buildozer virtualenv
 
-      # ---> THE ULTIMATE FIX: ISOLATE TOOLCHAIN & KEEP SDK UPDATES <---
-      - name: Prepare Stable Toolchain
+      # ---> THE ULTIMATE FIX: RESOLVE 404 & VERSION MISMATCH <---
+      - name: Auto-Patch Buildozer Spec
         run: |
-          # 1. Download stable Jan 2024 toolchain outside the cache
-          git clone https://github.com/kivy/python-for-android.git p4a-stable
-          cd p4a-stable
-          git checkout $(git rev-list -n 1 --before="2024-02-01" HEAD)
-          cd ..
+          python3 -c "
+          import re
+          text = open('buildozer.spec').read()
+          # 1. Re-enable SDK downloads to fix the AIDL error from previous attempts
+          text = text.replace('android.skip_update = True', 'android.skip_update = False')
           
-          # 2. Tell Buildozer to use this safe local folder 
-          sed -i '/\[app\]/a p4a.source_dir = '"$(pwd)"'/p4a-stable' buildozer.spec
+          # 2. Remove any injected local toolchain paths from previous hacks
+          text = re.sub(r'(?m)^p4a\.source_dir\s*=.*', '', text)
           
-          # 3. Force requirements to perfectly match the server's Python 3.11
-          sed -i 's/^requirements =.*/requirements = python3==3.11,kivy==2.3.0,pyjnius,bleak,android/g' buildozer.spec
+          # 3. Lock BOTH target and host Python to 3.11.9. 
+          # (Just '3.11' caused a 404 Not Found on python.org, triggering the 3.14.2 mismatch!)
+          text = re.sub(r'(?m)^requirements\s*=.*', 'requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,pyjnius,bleak,android', text)
+          
+          open('buildozer.spec', 'w').write(text)
+          "
 
       - name: Build APK
         run: |
