@@ -23,7 +23,7 @@ icon.filename = %(source.dir)s/ELMOS_LOGO.png
 
 # (list) Application requirements
 # CRUCIAL: pyjnius is required for bleak. Kivy pinned to 2.3.0 for stability.
-requirements = python3,kivy==2.3.0,pyjnius,bleak,android
+requirements = python3==3.11,kivy==2.3.0,pyjnius,bleak,android
 
 # (str) Supported orientations (landscape, sensorPortrait or all)
 orientation = portrait
