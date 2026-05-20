@@ -34,19 +34,20 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install "cython<3.0.0" buildozer virtualenv
 
-      # ---> THE ULTIMATE FIX: INJECT STABLE P4A DIRECTLY INTO CACHE <---
-      # We manually download the toolchain from Jan 2024 before the broken Python 3.14 
-      # update existed, and forcefully inject it into Buildozer's hidden folder cache.
-      - name: Inject Stable Toolchain
+      # ---> THE ULTIMATE FIX: ISOLATE TOOLCHAIN & KEEP SDK UPDATES <---
+      - name: Prepare Stable Toolchain
         run: |
-          mkdir -p .buildozer/android/platform/
-          git clone https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
-          cd .buildozer/android/platform/python-for-android
+          # 1. Download stable Jan 2024 toolchain outside the cache
+          git clone https://github.com/kivy/python-for-android.git p4a-stable
+          cd p4a-stable
           git checkout $(git rev-list -n 1 --before="2024-02-01" HEAD)
-          cd ../../../../
+          cd ..
           
-          # Flip the switch inside buildozer.spec so it doesn't overwrite our stable version
-          sed -i 's/android.skip_update = False/android.skip_update = True/g' buildozer.spec
+          # 2. Tell Buildozer to use this safe local folder 
+          sed -i '/\[app\]/a p4a.source_dir = '"$(pwd)"'/p4a-stable' buildozer.spec
+          
+          # 3. Force requirements to perfectly match the server's Python 3.11
+          sed -i 's/^requirements =.*/requirements = python3==3.11,kivy==2.3.0,pyjnius,bleak,android/g' buildozer.spec
 
       - name: Build APK
         run: |
