@@ -29,19 +29,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev python3-pip python3-setuptools
 
-      # ---> THE ULTIMATE FIX: PIN PYTHON-FOR-ANDROID <---
-      # Buildozer usually pulls the bleeding-edge "master" branch of python-for-android.
-      # By pinning it to the stable 2024.1.21 release, we force it to use Python 3.11
-      # and completely bypass the broken 3.14.2 update that keeps crashing your build.
       - name: Install Python dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install "cython<3.0.0" "buildozer==1.5.0" "python-for-android==2024.1.21" virtualenv
+          python -m pip install --upgrade pip
+          python -m pip install "cython<3.0.0" buildozer virtualenv
+
+      # ---> THE ULTIMATE FIX: FORCE THE 2024 STABLE TOOLCHAIN <---
+      # We manually download the toolchain from Jan 2024 before the broken Python 3.14 
+      # update existed, and forcefully inject it into Buildozer's configuration.
+      - name: Lock Toolchain to Stable 2024 Snapshot
+        run: |
+          git clone https://github.com/kivy/python-for-android.git p4a-stable
+          cd p4a-stable
+          git checkout $(git rev-list -n 1 --before="2024-02-01" HEAD)
+          cd ..
+          python -c "import os; pwd = os.getcwd(); content = open('buildozer.spec').read(); open('buildozer.spec', 'w').write(content.replace('[app]', f'[app]\np4a.source_dir = {pwd}/p4a-stable\n'))"
 
       - name: Build APK
         run: |
           export ORG_GRADLE_PROJECT_jvmargs="-Xmx3072m -Dorg.gradle.daemon=false"
-          python3 -m buildozer android debug
+          buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
